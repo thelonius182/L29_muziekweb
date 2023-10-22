@@ -155,6 +155,9 @@ for (cur_album_id in muw_ids_jazz_raw$album_id) {
 
 write_delim(all_album_info, "c:/Users/gergiev/Documents/woj_album_info.tsv", delim = "\t")
 
+# g3 <- g1$g2 %>% unlist() %>% as_tibble() %>% distinct() %>% 
+#   mutate(value = str_to_sentence(value)) %>% distinct() %>% arrange(value)
+
 # if (nrow(df_albums_and_tracks.1) > 0) {
 #   # uitdunnen: alleen de tracks die in de spreadsheet staan
 #   df_albums_and_tracks.2 <- df_albums_and_tracks.1 %>%
