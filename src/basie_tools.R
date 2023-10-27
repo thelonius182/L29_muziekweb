@@ -125,3 +125,16 @@ gd_albums_and_tracks_muw <- function(open_playlists) {
   
   return(muziekweb.3)
 }
+
+get_mal_conn <- function() {
+
+  result <- tryCatch( 
+    dbConnect(odbc::odbc(), "mAirlistDB", timeout = 10),
+    error = function(cond) {
+      flog.error("mAirList database unavailable", name = "bsblog")
+      return("connection-error")
+    }
+  )
+  
+  return(result)
+}

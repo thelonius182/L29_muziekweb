@@ -1,8 +1,5 @@
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# Configuratiebestand voor P0 - Get Google-CZ_data
+# Configuratiebestand voor BasieBeats
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-gs_downloads: "C:/Users/gergiev/Downloads/cz_downloads"
-
-cz_rds_store: "C:/Users/gergiev/cz_rds_store/branches/cz_gdrive/"
-
 muw_cred: "C:/pws_db/muw_creds.RDS"
+log_home: C:/Users/nipper/Logs
