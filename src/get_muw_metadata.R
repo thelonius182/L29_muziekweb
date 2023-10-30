@@ -1,27 +1,25 @@
-pacman::p_load(httr, xml2, tidyverse, keyring, googlesheets4, yaml, fs, magrittr, hms, readr)
+pacman::p_load(httr, xml2, keyring, readr)
 
-config <- read_yaml("config_nip_nxt.yaml")
-
-source("src/nip_tools.R", encoding = "UTF-8") # funcs_only
+flog.info("getting Muziekweb data", name = "bsblog")
 
 # load list of muw_id's to request
-muw_ids_jazz_raw <- read_csv("~/woj_muw_album_ids/muw_ids_jazz.txt", col_names = FALSE, show_col_types = F)
-names(muw_ids_jazz_raw) <- "album_id"
+muw_ids_woj_raw <- read_csv("C:/Users/nipper/Documents/BasieBeats/muw_ids_woj_20231022.csv", show_col_types = F)
+# names(muw_ids_jazz_raw) <- "album_id"
 
 # Muziekweb cred's voor track-info webservice
-muw_ws_cred_home <- config$muw_cred
+muw_ws_cred_home <- basie_config$muw_cred
 muw_ws_cred <- read_rds(file = muw_ws_cred_home)
 
-all_album_info <- tibble(track_id = character(), 
+all_album_info <- tibble(muw_catalogue_type = character(),
                          album = character(), 
+                         track_id = character(), 
                          secs = character(), 
+                         titel = character(),
                          deel_in_titel = character(), 
                          performers = character(),
-                         muw_catalogue_type = character(),
-                         titel = character(),
                          genre = character())
 
-for (cur_album_id in muw_ids_jazz_raw$album_id) {
+for (cur_album_id in muw_ids_woj_raw$album_id) {
   
   cat("album-id =", cur_album_id)
   
@@ -49,17 +47,30 @@ for (cur_album_id in muw_ids_jazz_raw$album_id) {
   # muw_gen_b <- muw_track_elm("g", "Category/Name[@Language='nl']")
   # muw_gen_c <- muw_track_elm("g", "Category/Style/Name[@Language='nl']")
   
-  stopifnot("Bovenstaande CD-code niet gevonden in Muziekweb-catalogus" = nrow(muw_album) > 0)
+  if (nrow(muw_album) == 0) {
+    cd_not_found <- sprintf("CD-code %s niet gevonden in Muziekweb-catalogus", cur_album_id)
+    flog.info(cd_not_found, name = "bsblog")
+    next
+  }
+  
+  muw_released <- muw_track_elm("r", muw_col_name = "released")
+  
   muw_tracks_id <-
     muw_track_elm("t", "AlbumTrackID", muw_col_name = "track_id")
+  
   muw_tracks_len <-
     muw_track_elm("t", "PlayTimeInSec", muw_col_name = "secs")
+  
   muw_tracks_tit <-
     muw_track_elm("t", "TrackTitle[@Language='nl']", muw_col_name = "titel_en_deel")
+  
   muw_tracks_tit_b <-
     muw_track_elm("t", "UniformTitle[@Language='nl']", muw_col_name = "titel")
+  
   muw_tracks_tit_add <-
     muw_track_elm("t", "AddonForUniformTitle[@Language='nl']", muw_col_name = "deel_in_titel")
+  
+  muw_spotify_id <- muw_external_link()
   
   muw_n_performers <- xml_attr(xml_find_all(muw_xml,
                                             "//Result/Album/Tracks/Track/Performers"),
@@ -68,8 +79,16 @@ for (cur_album_id in muw_ids_jazz_raw$album_id) {
   
   muw_catalogue_type <- 
     muw_track_elm("p", "PrimaryCatalogueCode", muw_col_name = "cat_type")[[1,1]]
+  
   muw_performer_name <-
     muw_track_elm("p", "PresentationName", muw_col_name = "performer")
+  
+  muw_performer_years <-
+    muw_track_elm("p", "Years", muw_col_name = "performer_years")
+  
+  muw_instruments <-
+    muw_track_elm("p", "Annotation", muw_col_name = "instruments")
+  
   muw_performer_role <-
     muw_track_elm("p", "Role[@Language='nl']", muw_col_name = "rol")
   
@@ -153,95 +172,4 @@ for (cur_album_id in muw_ids_jazz_raw$album_id) {
   all_album_info %<>% add_row(album_info.1)
 }
 
-write_delim(all_album_info, "c:/Users/gergiev/Documents/woj_album_info.tsv", delim = "\t")
-
-# g3 <- g1$g2 %>% unlist() %>% as_tibble() %>% distinct() %>% 
-#   mutate(value = str_to_sentence(value)) %>% distinct() %>% arrange(value)
-
-# if (nrow(df_albums_and_tracks.1) > 0) {
-#   # uitdunnen: alleen de tracks die in de spreadsheet staan
-#   df_albums_and_tracks.2 <- df_albums_and_tracks.1 %>%
-#     inner_join(all_album_info, by = c("muw_track_id" = "track_id"))
-#   
-#   # groepeer op titel
-#   df_albums_and_tracks.3 <- df_albums_and_tracks.2 %>%
-#     group_by(titel) %>%
-#     mutate(werk = row_number(),
-#            werk_lengte = sum(as.integer(secs))) %>%
-#     ungroup() %>%
-#     mutate(album_key = if_else(werk == 1, muw_track_id, NA_character_)) %>%
-#     fill(album_key, .direction = "down")
-#   
-#   # bewaar koppeling album_key/tracks, voor de bestelling later (in muziekweb_audio.R)
-#   # NB - df_albums_and_tracks_all bewaart album_keys van ALLE selecties tot nu toe, omdat een playlist
-#   #      soms in delen ontstaat. Alleen het laatste deel bewaren is dan te weinig.
-#   df_albums_and_tracks_file <-
-#     "C:/Users/gergiev/cz_rds_store/df_albums_and_tracks_all.RDS"
-#   # bestaande set inlezen
-#   df_albums_and_tracks_all <- read_rds(df_albums_and_tracks_file)
-#   # aanvulling voorbereiden
-#   df_albums_and_tracks.3.1 <- df_albums_and_tracks.3 %>%
-#     select(album_key, muw_album_id, muw_track)
-#   # dubbele album_keys voorkomen (bv als zelfde df_3.1 per ongeluk nog een keer toegevoegd wordt)
-#   df_albums_and_tracks_all %<>% add_row(df_albums_and_tracks.3.1) %>% distinct()
-#   # nu pas opslaan
-#   saveRDS(object = df_albums_and_tracks_all, file = df_albums_and_tracks_file)
-#   
-#   # 1 track per werk (voor gids, RL, draaiboek)
-#   df_albums_and_tracks.3.2 <-
-#     df_albums_and_tracks.3 %>% filter(werk == 1)
-#   
-#   # prep het blok voor GD-sheet "nipper-select"
-#   df_albums_and_tracks.4 <- df_albums_and_tracks.3.2 %>%
-#     mutate(
-#       # catalogue_type = muw_catalogue_type,
-#       componist = if_else(muw_catalogue_type == "POPULAR", 
-#                           # POPULAR: het album
-#                           # sub(",.*", "", paste0(performers, ","), perl=TRUE), 
-#                           paste0("van het album ", album), 
-#                           # CLASSICAL: de componist
-#                           sub("^([^(]+) \\(componist\\), (.*)$",
-#                               "\\1",
-#                               performers,
-#                               perl = TRUE,
-#                               ignore.case = TRUE)
-#       ),
-#       performers = sub(
-#         "^([^(]+) \\(componist\\), (.*)$",
-#         "\\2",
-#         performers,
-#         perl = TRUE,
-#         ignore.case = TRUE
-#       ),
-#       tot_time = NA_real_,
-#       detect = NA,
-#       keuze = T,
-#       lengte = as.character(hms(seconds = werk_lengte)),
-#       vt_blok_id = "Z99",
-#       opnameNr = muw_track_id
-#     ) %>%
-#     arrange(playlist, componist, titel) %>%
-#     # group_by(playlist, componist, titel) %>%
-#     # mutate(vt_blok = row_number()) %>%
-#     # ungroup() %>%
-#     # group_by(vt_blok) %>%
-#     # mutate(vt_blok_index = if_else(vt_blok == 1, row_number(), NA_integer_)) %>%
-#     # ungroup() %>%
-#     # select(componist, titel, tot_time, detect, keuze, lengte, playlist, vt_blok_index, vt_blok, performers, album, opnameNr) %>%
-#     # arrange(componist, vt_blok_index, vt_blok) %>%
-#     # fill(vt_blok_index) %>%
-#     # mutate(vt_blok_id = paste0(LETTERS[vt_blok_index], str_pad(vt_blok, width = 2, side = "left", pad = "0"))) %>%
-#     select(
-#       componist,
-#       titel,
-#       tot_time,
-#       detect,
-#       keuze,
-#       lengte,
-#       playlist,
-#       vt_blok_id,
-#       performers,
-#       album,
-#       opnameNr
-#     )
-# }
+write_delim(all_album_info, "c:/Users/nipper/Documents/BasieBeats/woj_album_info.tsv", delim = "\t")
