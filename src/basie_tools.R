@@ -29,6 +29,11 @@ muw_album_genre <- function(muw_req, muw_col_name, c1, c2, s1) {
 muw_external_link <- function() {
   
   spotify_links <- xml_find_all(muw_xml, ".//ExternalLink[@Provider='SPOTIFY']")
+  
+  if (length(spotify_links) == 0) {
+    return(tibble(spotify_id = NA))
+  }
+  
   spotify_links_tib <- xml_text(spotify_links) %>% as_tibble() %>% mutate(rrn = row_number()) %>% 
     select(rrn, spotify_id = value)
   
@@ -38,10 +43,11 @@ muw_external_link <- function() {
     xml_attr(closest_track, "TrackNumber")
   }) %>% as_tibble() %>% mutate(rrn = row_number(), spotify_key = as.integer(value)) %>% select(-value)
   
-  spotify_links_by_key <- spotify_links_tib %>% left_join(track_numbers) %>% select(-rrn)
+  suppressMessages(spotify_links_by_key <- spotify_links_tib %>% left_join(track_numbers) %>% select(-rrn))
   
-  muw_tracks_id %>% mutate(spotify_key = row_number()) %>% left_join(spotify_links_by_key) %>% 
-    select(spotify_id)
+  suppressMessages(result <- muw_tracks_id %>% mutate(spotify_key = row_number()) %>% 
+                     left_join(spotify_links_by_key) %>% select(spotify_id))
+  return(result)
 }
 
 gd_open_playlists <- function() {
@@ -125,28 +131,45 @@ gd_albums_and_tracks_muw <- function(open_playlists) {
     }
   }
   
-  muziekweb.3 <- muziekweb.2 %>%
-    inner_join(track_items, by = c("rrn" = "track_rrn")) %>%
-    rename(muw_album_id = `muziekweb-id`) %>%
-    select(starts_with("muw"), playlist) %>%
-    mutate(muw_track_id = paste0(
-      muw_album_id,
-      "-",
-      str_pad(
-        string = as.character(muw_track),
-        width = 4,
-        side = "left",
-        pad = "0"
-      )
-    ))
+  suppressMessages(muziekweb.3 <- muziekweb.2 %>%
+                     inner_join(track_items, by = c("rrn" = "track_rrn")) %>%
+                     rename(muw_album_id = `muziekweb-id`) %>%
+                     select(starts_with("muw"), playlist) %>%
+                     mutate(muw_track_id = paste0(muw_album_id,
+                                                  "-",
+                                                  str_pad(string = as.character(muw_track),
+                                                          width = 4,
+                                                          side = "left",
+                                                          pad = "0"))))
   
   return(muziekweb.3)
 }
 
+# get_mal_conn <- function() {
+# 
+#   result <- tryCatch( 
+#     dbConnect(odbc::odbc(), "mAirlistDB", timeout = 10),
+#     error = function(cond) {
+#       flog.error("mAirList database unavailable", name = "bsblog")
+#       return("connection-error")
+#     }
+#   )
+#   
+#   return(result)
+# }
+# 
 get_mal_conn <- function() {
+  
+  # just to prevent uploading credentials to github
+  basie_creds <- read_rds("C:/Users/nipper/Documents/BasieBeats/basie.creds")
 
   result <- tryCatch( 
-    dbConnect(odbc::odbc(), "mAirlistDB", timeout = 10),
+    dbConnect(RPostgres::Postgres(),
+              dbname = 'mairlist7', 
+              host = '192.168.178.91', 
+              port = 5432,
+              user = basie_creds$usr,
+              password = basie_creds$pwd),
     error = function(cond) {
       flog.error("mAirList database unavailable", name = "bsblog")
       return("connection-error")

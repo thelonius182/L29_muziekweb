@@ -1,9 +1,9 @@
-pacman::p_load(httr, xml2, keyring, readr)
+pacman::p_load(httr, xml2, keyring, readr, magrittr, dplyr, tidyr)
 
 flog.info("getting Muziekweb data", name = "bsblog")
 
 # load list of muw_id's to request
-muw_ids_woj_raw <- read_csv("C:/Users/nipper/Documents/BasieBeats/muw_ids_woj_20231022.csv", show_col_types = F)
+# muw_ids_woj_raw <- read_csv("C:/Users/nipper/Documents/BasieBeats/muw_ids_woj_20231022.csv", show_col_types = F)
 # names(muw_ids_jazz_raw) <- "album_id"
 
 # Muziekweb cred's voor track-info webservice
@@ -17,11 +17,15 @@ all_album_info <- tibble(muw_catalogue_type = character(),
                          titel = character(),
                          deel_in_titel = character(), 
                          performers = character(),
-                         genre = character())
+                         genre = character(),
+                         released = character(),
+                         spotify_id = character(),
+                         instruments = character())
+muw_genre_all <- tibble()
 
-for (cur_album_id in muw_ids_woj_raw$album_id) {
+for (cur_album_id in muw_ids$muw_id) {
   
-  cat("album-id =", cur_album_id)
+  cat("album-id =", cur_album_id, "\n")
   
   muw_result <-
     GET(
@@ -145,12 +149,16 @@ for (cur_album_id in muw_ids_woj_raw$album_id) {
     }
   }
   
+  muw_genre <- muw_genre |> mutate(across(c("main_category", "category", "style"), ~ str_to_lower(.x)))
   genre_txt <- muw_genre %>% group_by(main_category, category) %>% unlist() %>% str_flatten(collapse = ",")
   elements <- trimws(str_split(genre_txt, ",")[[1]])
   unique_elements <- unique(elements)
   genre_txt_clean <- paste(unique_elements, collapse = ",") %>% as_tibble()
   names(genre_txt_clean) <- "genre"
-
+  
+  instruments <- muw_instruments |> filter(str_length(str_trim(instruments, side = "both")) > 0) |> distinct() |> 
+    unlist() |> str_flatten(collapse = ",")
+  
   # album-info compileren
   album_info <- muw_tracks_id
   album_info %<>% add_column(muw_album)
@@ -161,15 +169,73 @@ for (cur_album_id in muw_ids_woj_raw$album_id) {
   album_info %<>% add_column(muw_performers)
   album_info %<>% add_column(muw_catalogue_type)
   album_info %<>% add_column(genre_txt_clean)
+  album_info %<>% add_column(muw_released)
+  album_info %<>% add_column(muw_spotify_id)
+  album_info %<>% add_column(instruments)
   
   # zorg dat er altijd een titel is, zonodig door 'titel_en_deel' te kiezen
-  album_info.1 <- album_info %>%
-    mutate(tmp_titel = if_else(str_length(str_trim(titel, side = "both")) == 0, titel_en_deel, titel)) %>%
-    rename(titel_w_nulls = titel, titel = tmp_titel) %>%
-    select(-titel_w_nulls, -titel_en_deel)
+  album_info.1 <- album_info |> 
+    mutate(tmp_titel = if_else(str_length(str_trim(titel, side = "both")) == 0, titel_en_deel, titel)) |> 
+    rename(titel_w_nulls = titel, titel = tmp_titel) |> 
+    select(-titel_w_nulls, -titel_en_deel) |> 
+    select(track_id, album, titel, deel_in_titel, everything())
   
   # verzamelen
   all_album_info %<>% add_row(album_info.1)
+  muw_genre <- muw_genre |> add_column(muw_id = cur_album_id) 
+  muw_genre_all <- muw_genre_all |> bind_rows(muw_genre)
 }
 
-write_delim(all_album_info, "c:/Users/nipper/Documents/BasieBeats/woj_album_info.tsv", delim = "\t")
+all_album_info <- all_album_info |> mutate(genre = str_to_lower(genre))
+
+muw_genre_by_album <- muw_genre_all |> pivot_longer(cols = c(main_category, category, style), 
+                                                   names_to = "genre_lbl", 
+                                                   values_to = "genre") |> 
+  select(-genre_lbl) |> arrange(muw_id, genre) |> distinct()
+
+# Jazz-cd's
+muw_ids_jazz <- muw_genre_by_album |> mutate(woj_cat = "jazz", is_jazz = str_detect(genre, "jazz")) |> 
+  filter(is_jazz) |> select(muw_id, woj_cat) |> arrange(muw_id) |> distinct()
+
+# world-cd's
+suppressMessages(muw_ids_world <- muw_genre_by_album |> select(muw_id) |> arrange(muw_id) |> distinct() |> 
+                   anti_join(muw_ids_jazz) |> mutate(woj_cat = "world"))
+
+muw_genre_triplets_jazz <- muw_genre_all |> inner_join(muw_ids_jazz) |> 
+  select(woj_cat, muw_cat = category, style) |> arrange(woj_cat, muw_cat, style) |> distinct()
+
+muw_genre_triplets_world <- muw_genre_all |> inner_join(muw_ids_world) |> 
+  select(woj_cat, muw_cat = category, style) |> arrange(woj_cat, muw_cat, style) |> distinct()
+
+# unique_genres <- muw_genre_by_album |> select(genre) |> mutate(genre = str_to_lower(genre)) |> 
+#   arrange(genre) |> distinct()
+
+genre_stats_jazz <- tibble()
+
+for (cur_style in muw_genre_triplets_jazz$style) {
+  
+  aai <- all_album_info |> 
+    filter(str_extract(all_album_info$track_id, "[A-Z0-9]+") %in% muw_ids_jazz$muw_id & 
+             str_detect(genre, paste0("\\b", cur_style, "\\b"))) |> 
+    summarise(n_tracks = n(), tot_hrs = round(sum(as.integer(secs)) / 3600, 2))
+  aai_tib <- tibble(genre = cur_style, n_tracks = aai$n_tracks, tot_hrs = aai$tot_hrs)
+  genre_stats_jazz <- genre_stats_jazz |> bind_rows(aai_tib)
+}
+
+genre_stats_world <- tibble()
+
+for (cur_style in muw_genre_triplets_world$style) {
+  
+  aai <- all_album_info |> 
+    filter(str_extract(all_album_info$track_id, "[A-Z0-9]+") %in% muw_ids_world$muw_id & 
+             str_detect(genre, paste0("\\b", cur_style, "\\b"))) |> 
+    summarise(n_tracks = n(), tot_hrs = round(sum(as.integer(secs)) / 3600, 2))
+  aai_tib <- tibble(genre = cur_style, n_tracks = aai$n_tracks, tot_hrs = aai$tot_hrs)
+  genre_stats_world <- genre_stats_world |> bind_rows(aai_tib)
+}
+
+write_delim(all_album_info, "c:/Users/nipper/Documents/BasieBeats/woj_album_info_2023-11-26.tsv", delim = "\t")
+write_delim(muw_genre_all, "c:/Users/nipper/Documents/BasieBeats/muw_genre_all_2023-11-26.tsv", delim = "\t")
+write_delim(muw_genre_by_album, "c:/Users/nipper/Documents/BasieBeats/muw_genre_by_album_2023-11-26.tsv", delim = "\t")
+write_delim(genre_stats_jazz, "c:/Users/nipper/Documents/BasieBeats/genre_stats_jazz_2023-11-26.tsv", delim = "\t")
+write_delim(genre_stats_world, "c:/Users/nipper/Documents/BasieBeats/genre_stats_world_2023-11-26.tsv", delim = "\t")

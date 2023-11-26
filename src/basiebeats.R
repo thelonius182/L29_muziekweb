@@ -1,4 +1,4 @@
-pacman::p_load(DBI, dplyr, fs, stringr, lubridate, yaml, futile.logger)
+pacman::p_load(DBI, dplyr, fs, stringr, lubridate, yaml, futile.logger, tibble, readr)
 
 # import functions ----
 source("src/basie_tools.R", encoding = "UTF-8")
@@ -17,8 +17,14 @@ stopifnot("mAirList-DB not available" = db_conn_result == "S4")
 
 flog.info("mAirList-DB is connected", name = "bsblog")
 
-sql_stm <- "select * from public.folders;"
-pufo <- dbGetQuery(maldb, sql_stm)
+# skip jingles and shows
+sql_stm <- "select title from public.items where type = 'Music';"
+ml_items_db <- dbGetQuery(maldb, sql_stm)
+
+# get unmatched CD-id's only (drop track numbers)
+muw_ids <- ml_items_db |> mutate(muw_id = sub(".*?([A-Z0-9]+)-\\d+.*", "\\1", title, perl=TRUE)) |> 
+  select(muw_id) |> distinct() |> arrange(muw_id)
+rm(ml_items_db)
 
 dbDisconnect(maldb)
 flog.info("mAirList-DB is disconnected", name = "bsblog")
