@@ -1,4 +1,4 @@
-pacman::p_load(httr, xml2, keyring, readr, magrittr, dplyr, tidyr)
+pacman::p_load(httr, xml2, keyring, readr, magrittr, dplyr, tidyr, stringr)
 
 flog.info("getting Muziekweb data", name = "bsblog")
 
@@ -234,8 +234,31 @@ for (cur_style in muw_genre_triplets_world$style) {
   genre_stats_world <- genre_stats_world |> bind_rows(aai_tib)
 }
 
-write_delim(all_album_info, "c:/Users/nipper/Documents/BasieBeats/woj_album_info_2023-11-26.tsv", delim = "\t")
-write_delim(muw_genre_all, "c:/Users/nipper/Documents/BasieBeats/muw_genre_all_2023-11-26.tsv", delim = "\t")
-write_delim(muw_genre_by_album, "c:/Users/nipper/Documents/BasieBeats/muw_genre_by_album_2023-11-26.tsv", delim = "\t")
-write_delim(genre_stats_jazz, "c:/Users/nipper/Documents/BasieBeats/genre_stats_jazz_2023-11-26.tsv", delim = "\t")
-write_delim(genre_stats_world, "c:/Users/nipper/Documents/BasieBeats/genre_stats_world_2023-11-26.tsv", delim = "\t")
+write_delim(all_album_info, "c:/Users/nipper/Documents/BasieBeats/woj_album_info_2023-12-01.tsv", delim = "\t")
+write_delim(muw_genre_all, "c:/Users/nipper/Documents/BasieBeats/muw_genre_all_2023-12-01.tsv", delim = "\t")
+write_delim(muw_genre_by_album, "c:/Users/nipper/Documents/BasieBeats/muw_genre_by_album_2023-12-01.tsv", delim = "\t")
+write_delim(genre_stats_jazz, "c:/Users/nipper/Documents/BasieBeats/genre_stats_jazz_2023-12-01.tsv", delim = "\t")
+write_delim(genre_stats_world, "c:/Users/nipper/Documents/BasieBeats/genre_stats_world_2023-12-01.tsv", delim = "\t")
+
+write_rds(all_album_info, "c:/Users/nipper/Documents/BasieBeats/all_album_info.RDS")
+all_album_info <- read_rds("c:/Users/nipper/Documents/BasieBeats/all_album_info.RDS")
+
+all_album_info_by_genre <- all_album_info |> 
+  mutate(genre_A = if_else(str_detect(genre, "jazz"), "jazz", "world")) |> 
+  separate_longer_delim(cols = genre, delim = ",")
+
+unique_genres_raw <- all_album_info_by_genre |> select(genre_A, genre) |> distinct()
+
+unique_genres_clean_jazz <- unique_genres_raw |> 
+  filter(!genre %in% c("landen", "wereld", "populair", "brazil", "brazilië", "overige talen", 
+                       "ethiopië", "puerto rico")) |> 
+  filter(genre_A == "jazz") |> 
+  mutate(woj_genre = case_when(str_detect(genre, "euro") ~ "europa",
+                               str_detect(genre, "voca") ~ "vocaal",
+                               str_detect(genre, "neder") ~ "nederland",
+                               str_detect(genre, "afr") ~ "afrika",
+                               str_detect(genre, "lat") ~ "latin jazz",
+                               T ~ genre))
+
+woj_genres_jazz_mairlist <- unique_genres_clean_jazz |> select(woj_genre) |> distinct()
+ 
