@@ -266,6 +266,88 @@ neo_soul <- muw_album_ids |> filter(album_id %in% c('JK246886',
   select(item = idx, name, value)
 dbWriteTable(maldb, "basiebeats_neo_soul", neo_soul)
 
+sql_stmt <- "
+with ds1 as (select artist, case when externalid is null then 0 else 1 end as has_muwtags from items)
+select artist, count(*) as n_tracks, sum(has_muwtags) as n_muwtags from ds1 group by artist order by 1;
+"
+muwtags_by_artist <- dbGetQuery(maldb, sql_stmt)
+
+tagged_artists <- muwtags_by_artist |> filter(n_muwtags > 0)
+
+sql_stmt <- "select count(idx) as n_idx from items;"
+n_tracks <- dbGetQuery(maldb, sql_stmt)
+
+tagged_artists <- muwtags_by_artist |> filter(n_muwtags > 0)
+
+sql_stmt <- "select count(item) as n_itmes from item_attributes
+where name not in ('album', 'any_jazz', 'any_world');"
+n_attrs <- dbGetQuery(maldb, sql_stmt)
+
+sql_stmt <- "select name, count(*) as n_tracks from item_attributes
+where name not in ('album', 'any_jazz', 'any_world') group by name order by 1;"
+attr_stats1 <- dbGetQuery(maldb, sql_stmt)
+
+sql_stmt <- "
+with ds1 as (select distinct item from item_attributes 
+where name not in ('album', 'any_jazz', 'any_world')
+  and name not like '19%'
+  and name not like '20%')
+select * from items where artist != ''
+                      and type = 'Music'
+                      and idx not in (select item from ds1)  
+;
+"
+tracks_wo_attrs <- dbGetQuery(maldb, sql_stmt)
+
+
+sql_stmt <- "
+with ds1 as (select distinct item from item_attributes 
+where name not in ('album', 'any_jazz', 'any_world')
+  and name not like '19%'
+  and name not like '20%')
+select * from items where artist != ''
+                      and type = 'Music'
+                      and idx in (select item from ds1)  
+;
+"
+tracks_w_attrs <- dbGetQuery(maldb, sql_stmt)
+
+tracks_share_attrs <- tracks_wo_attrs |> filter(artist %in% tracks_w_attrs$artist)
+
+tracks_wo_attrs_final <- tracks_wo_attrs |> filter(!artist %in% tracks_share_attrs$artist)
+tracks_wo_attrs_final__artists <- tracks_wo_attrs_final |> select(artist) |> distinct() |> arrange(artist)
+
+write_lines(tracks_wo_attrs_final__artists$artist, "C:/Users/nipper/Documents/BasieBeats/missing_artists.txt")
+
+woj_dates <- woj_album_info_2023_12_01 |> select(track_id, released) |> 
+  mutate(name = case_when(released >= ymd("2010-01-01") ~ "2010+",
+                            released >= ymd("2000-01-01") ~ "2000`s",
+                            released >= ymd("1990-01-01") ~ "1990`s",
+                            released >= ymd("1980-01-01") ~ "1980`s",
+                            released >= ymd("1970-01-01") ~ "1970`s",
+                            released >= ymd("1960-01-01") ~ "1960`s",
+                            released >= ymd("1950-01-01") ~ "1950`s",
+                            released >= ymd("1940-01-01") ~ "1940`s",
+                            released >= ymd("1930-01-01") ~ "1930`s",
+                            released >= ymd("1920-01-01") ~ "1920`s",
+                            released >= ymd("1910-01-01") ~ "1910`s",
+                            T ~ "1900`s"),
+         value = "yes") |> select(-released)
+dbWriteTable(maldb, "basiebeats_ymd_attrs", woj_dates)
+
+sql_stmt <- "select i1.idx, a1.* from items i1 join basiebeats_ymd_attrs a1 on a1.track_id = i1.externalid"
+woj_dates_idx <- dbGetQuery(maldb, sql_stmt)
+woj_dates_attrs <- woj_dates_idx |> select(item = idx, name, value)
+dbWriteTable(maldb, "basiebeats_ymd__new_attrs", woj_dates_attrs)
+
+sql_stmt <- "insert into item_attributes select * from basiebeats_ymd__new_attrs"
+q1 <- dbExecute(maldb, sql_stmt)
+
+sql_stmt <- "select distinct name from item_attributes where name like '19%' or name like '20%'"
+dist_years <- dbGetQuery(maldb, sql_stmt)
+
+
+
 # get CD-id's
 muw_ids <- new_muw_track_ids |> mutate(muw_id = sub(".*?([A-Z0-9]+)-\\d+.*", "\\1", title, perl=TRUE)) |> 
   select(muw_id) |> distinct() |> arrange(muw_id)
@@ -286,6 +368,30 @@ where title = 'HEX12644-0011'", t2$titel)
 dbExecute(maldb, upd_stm)
 
 rm(ml_items_db)
+
+# PREP CLUST ----
+sql_stm <- "SELECT idx, artist, title, duration,
+	   a1.value as album
+FROM items join item_attributes a1 on a1.item = idx
+where a1.name = 'album'"
+ml_albums_a <- dbGetQuery(maldb, sql_stm)
+
+ml_albums_b <- ml_albums_a |> arrange(idx) |> group_by(artist, album) |> mutate(grp_id = row_number()) |> ungroup()
+
+ml_albums_c <- ml_albums_b |> filter(grp_id == 1)
+
+sql_stm <- "SELECT * FROM item_attributes"
+ml_attrs <- dbGetQuery(maldb, sql_stm)
+
+ml_albums_d <- ml_albums_c |> left_join(ml_attrs, by = c("idx" = "item")) |> filter(name != "album") |> 
+  select(-grp_id, -value)
+
+ml_albums_e <- ml_albums_d |> mutate(attr_value = 1) |> 
+  pivot_wider(names_from = name, values_from = attr_value)
+
+n1 <- names(ml_albums_e) |> sort()
+ml_albums_f <- ml_albums_e |> select(all_of(n1)) |> select(idx, artist, album, everything()) |> 
+  mutate_all(~replace(., is.na(.), 0)) |> select(-artist, -album)
 
 dbDisconnect(maldb)
 flog.info("mAirList-DB is disconnected", name = "bsblog")
