@@ -8,7 +8,7 @@ basie_config <- read_yaml("basie_config.yaml")
 log_path <- paste(basie_config$log_home, "basie_beats.log", sep = "/")
 lg_ini <- flog.appender(appender.file(log_path), "bsblog")
 flog.info("
-= = = = = START BasieBeats (version 2023-12-22 15:40) = = = = =", name = "bsblog")
+= = = = = START BasieBeats (version 2024-01-23 21:18) = = = = =", name = "bsblog")
 
 # connect to mAirList-DB ----
 maldb <- get_mal_conn()
@@ -21,22 +21,14 @@ flog.info("mAirList-DB is connected", name = "bsblog")
 sql_stm <- "select title from public.items where type = 'Music';"
 ml_items_db <- dbGetQuery(maldb, sql_stm)
 
-# glimpse items
-sql_stm <- "select * from public.items where type = 'Music';"
-ml_glimpse_db <- dbGetQuery(maldb, sql_stm)
-
-# glimpse attr
-sql_stm <- "select * from public.item_attributes;"
-ml_glimpse_attr_db <- dbGetQuery(maldb, sql_stm)
-
 # get new muw tracks
-new_muw_track_ids <- ml_items_db |> filter(str_detect(title, "^[A-Z]{1,3}[0-9]+-\\d{4}$"))
+new_muw_track_ids <- ml_items_db |> filter(str_detect(title, ".*[0-9]{3}-\\d{4}$"))
 
 # link to muziekweb metadata
 muw_track_info <- read_rds("c:/Users/nipper/Documents/BasieBeats/all_album_info.RDS") |> 
   inner_join(new_muw_track_ids, by = c("track_id" = "title")) |> 
   select(-muw_catalogue_type, -deel_in_titel) |> 
-  mutate(genre_A = if_else(str_detect(genre, "jazz"), "jazz", "world")) |> 
+  mutate(genre_A = if_else(str_detect(genre, "jazz"), "any_jazz", "any_world")) |> 
   separate_longer_delim(cols = genre, delim = ",") |> rename(muw_genre = genre) |> 
   filter(!muw_genre %in% c("landen", "wereld", "populair", "overige talen"))
 
@@ -349,8 +341,9 @@ dist_years <- dbGetQuery(maldb, sql_stmt)
 
 
 # get CD-id's
-muw_ids <- new_muw_track_ids |> mutate(muw_id = sub(".*?([A-Z0-9]+)-\\d+.*", "\\1", title, perl=TRUE)) |> 
-  select(muw_id) |> distinct() |> arrange(muw_id)
+muw_ids <- new_muw_track_ids |> 
+  mutate(muw_id = str_extract(title, pattern = "([A-Z][A-Z0-9]+)-\\d{4}$", group = 1)) |> 
+  filter(!is.na(muw_id)) |> select(muw_id) |> distinct() |> arrange(muw_id)
 
 sql_stmt <- "select distinct name from item_attributes where value = 'yes' order by 1;"
 standard_attrs <- dbGetQuery(maldb, sql_stmt)
@@ -376,7 +369,8 @@ FROM items join item_attributes a1 on a1.item = idx
 where a1.name = 'album'"
 ml_albums_a <- dbGetQuery(maldb, sql_stm)
 
-ml_albums_b <- ml_albums_a |> arrange(idx) |> group_by(artist, album) |> mutate(grp_id = row_number()) |> ungroup()
+ml_albums_b <- ml_albums_a |> arrange(idx) |> group_by(artist, album) |> mutate(grp_id = row_number()) |> 
+  ungroup()
 
 ml_albums_c <- ml_albums_b |> filter(grp_id == 1)
 

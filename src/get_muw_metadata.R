@@ -19,6 +19,7 @@ all_album_info <- tibble(muw_catalogue_type = character(),
                          performers = character(),
                          genre = character(),
                          released = character(),
+                         recorded = character(),
                          spotify_id = character(),
                          instruments = character())
 muw_genre_all <- tibble()
@@ -47,9 +48,6 @@ for (cur_album_id in muw_ids$muw_id) {
   muw_xml <- as_xml_document(muw_txt)
   
   muw_album <- muw_track_elm("a", muw_col_name = "album")
-  # muw_gen_a <- muw_track_elm("g", "Name[@Language='nl']")
-  # muw_gen_b <- muw_track_elm("g", "Category/Name[@Language='nl']")
-  # muw_gen_c <- muw_track_elm("g", "Category/Style/Name[@Language='nl']")
   
   if (nrow(muw_album) == 0) {
     cd_not_found <- sprintf("CD-code %s niet gevonden in Muziekweb-catalogus", cur_album_id)
@@ -58,6 +56,8 @@ for (cur_album_id in muw_ids$muw_id) {
   }
   
   muw_released <- muw_track_elm("r", muw_col_name = "released")
+  
+  muw_recorded <- muw_track_elm("pr", muw_col_name = "recorded")
   
   muw_tracks_id <-
     muw_track_elm("t", "AlbumTrackID", muw_col_name = "track_id")
@@ -170,6 +170,7 @@ for (cur_album_id in muw_ids$muw_id) {
   album_info %<>% add_column(muw_catalogue_type)
   album_info %<>% add_column(genre_txt_clean)
   album_info %<>% add_column(muw_released)
+  album_info %<>% add_column(muw_recorded)
   album_info %<>% add_column(muw_spotify_id)
   album_info %<>% add_column(instruments)
   
@@ -187,78 +188,78 @@ for (cur_album_id in muw_ids$muw_id) {
 }
 
 all_album_info <- all_album_info |> mutate(genre = str_to_lower(genre))
+write_rds(all_album_info, "c:/Users/nipper/Documents/BasieBeats/new_album_info.RDS")
 
-muw_genre_by_album <- muw_genre_all |> pivot_longer(cols = c(main_category, category, style), 
-                                                   names_to = "genre_lbl", 
-                                                   values_to = "genre") |> 
-  select(-genre_lbl) |> arrange(muw_id, genre) |> distinct()
-
-# Jazz-cd's
-muw_ids_jazz <- muw_genre_by_album |> mutate(woj_cat = "jazz", is_jazz = str_detect(genre, "jazz")) |> 
-  filter(is_jazz) |> select(muw_id, woj_cat) |> arrange(muw_id) |> distinct()
-
-# world-cd's
-suppressMessages(muw_ids_world <- muw_genre_by_album |> select(muw_id) |> arrange(muw_id) |> distinct() |> 
-                   anti_join(muw_ids_jazz) |> mutate(woj_cat = "world"))
-
-muw_genre_triplets_jazz <- muw_genre_all |> inner_join(muw_ids_jazz) |> 
-  select(woj_cat, muw_cat = category, style) |> arrange(woj_cat, muw_cat, style) |> distinct()
-
-muw_genre_triplets_world <- muw_genre_all |> inner_join(muw_ids_world) |> 
-  select(woj_cat, muw_cat = category, style) |> arrange(woj_cat, muw_cat, style) |> distinct()
-
-# unique_genres <- muw_genre_by_album |> select(genre) |> mutate(genre = str_to_lower(genre)) |> 
-#   arrange(genre) |> distinct()
-
-genre_stats_jazz <- tibble()
-
-for (cur_style in muw_genre_triplets_jazz$style) {
-  
-  aai <- all_album_info |> 
-    filter(str_extract(all_album_info$track_id, "[A-Z0-9]+") %in% muw_ids_jazz$muw_id & 
-             str_detect(genre, paste0("\\b", cur_style, "\\b"))) |> 
-    summarise(n_tracks = n(), tot_hrs = round(sum(as.integer(secs)) / 3600, 2))
-  aai_tib <- tibble(genre = cur_style, n_tracks = aai$n_tracks, tot_hrs = aai$tot_hrs)
-  genre_stats_jazz <- genre_stats_jazz |> bind_rows(aai_tib)
-}
-
-genre_stats_world <- tibble()
-
-for (cur_style in muw_genre_triplets_world$style) {
-  
-  aai <- all_album_info |> 
-    filter(str_extract(all_album_info$track_id, "[A-Z0-9]+") %in% muw_ids_world$muw_id & 
-             str_detect(genre, paste0("\\b", cur_style, "\\b"))) |> 
-    summarise(n_tracks = n(), tot_hrs = round(sum(as.integer(secs)) / 3600, 2))
-  aai_tib <- tibble(genre = cur_style, n_tracks = aai$n_tracks, tot_hrs = aai$tot_hrs)
-  genre_stats_world <- genre_stats_world |> bind_rows(aai_tib)
-}
-
-write_delim(all_album_info, "c:/Users/nipper/Documents/BasieBeats/woj_album_info_2023-12-01.tsv", delim = "\t")
-write_delim(muw_genre_all, "c:/Users/nipper/Documents/BasieBeats/muw_genre_all_2023-12-01.tsv", delim = "\t")
-write_delim(muw_genre_by_album, "c:/Users/nipper/Documents/BasieBeats/muw_genre_by_album_2023-12-01.tsv", delim = "\t")
-write_delim(genre_stats_jazz, "c:/Users/nipper/Documents/BasieBeats/genre_stats_jazz_2023-12-01.tsv", delim = "\t")
-write_delim(genre_stats_world, "c:/Users/nipper/Documents/BasieBeats/genre_stats_world_2023-12-01.tsv", delim = "\t")
-
-write_rds(all_album_info, "c:/Users/nipper/Documents/BasieBeats/all_album_info.RDS")
-all_album_info <- read_rds("c:/Users/nipper/Documents/BasieBeats/all_album_info.RDS")
-
-all_album_info_by_genre <- all_album_info |> 
-  mutate(genre_A = if_else(str_detect(genre, "jazz"), "jazz", "world")) |> 
-  separate_longer_delim(cols = genre, delim = ",")
-
-unique_genres_raw <- all_album_info_by_genre |> select(genre_A, genre) |> distinct()
-
-unique_genres_clean_jazz <- unique_genres_raw |> 
-  filter(!genre %in% c("landen", "wereld", "populair", "brazil", "brazilië", "overige talen", 
-                       "ethiopië", "puerto rico")) |> 
-  filter(genre_A == "jazz") |> 
-  mutate(woj_genre = case_when(str_detect(genre, "euro") ~ "europa",
-                               str_detect(genre, "voca") ~ "vocaal",
-                               str_detect(genre, "neder") ~ "nederland",
-                               str_detect(genre, "afr") ~ "afrika",
-                               str_detect(genre, "lat") ~ "latin jazz",
-                               T ~ genre))
-
-woj_genres_jazz_mairlist <- unique_genres_clean_jazz |> select(woj_genre) |> distinct()
- 
+# muw_genre_by_album <- muw_genre_all |> pivot_longer(cols = c(main_category, category, style), 
+#                                                    names_to = "genre_lbl", 
+#                                                    values_to = "genre") |> 
+#   select(-genre_lbl) |> arrange(muw_id, genre) |> distinct()
+# 
+# # Jazz-cd's
+# muw_ids_jazz <- muw_genre_by_album |> mutate(woj_cat = "jazz", is_jazz = str_detect(genre, "jazz")) |> 
+#   filter(is_jazz) |> select(muw_id, woj_cat) |> arrange(muw_id) |> distinct()
+# 
+# # world-cd's
+# suppressMessages(muw_ids_world <- muw_genre_by_album |> select(muw_id) |> arrange(muw_id) |> distinct() |> 
+#                    anti_join(muw_ids_jazz) |> mutate(woj_cat = "world"))
+# 
+# muw_genre_triplets_jazz <- muw_genre_all |> inner_join(muw_ids_jazz) |> 
+#   select(woj_cat, muw_cat = category, style) |> arrange(woj_cat, muw_cat, style) |> distinct()
+# 
+# muw_genre_triplets_world <- muw_genre_all |> inner_join(muw_ids_world) |> 
+#   select(woj_cat, muw_cat = category, style) |> arrange(woj_cat, muw_cat, style) |> distinct()
+# 
+# # unique_genres <- muw_genre_by_album |> select(genre) |> mutate(genre = str_to_lower(genre)) |> 
+# #   arrange(genre) |> distinct()
+# 
+# genre_stats_jazz <- tibble()
+# 
+# for (cur_style in muw_genre_triplets_jazz$style) {
+#   
+#   aai <- all_album_info |> 
+#     filter(str_extract(all_album_info$track_id, "[A-Z0-9]+") %in% muw_ids_jazz$muw_id & 
+#              str_detect(genre, paste0("\\b", cur_style, "\\b"))) |> 
+#     summarise(n_tracks = n(), tot_hrs = round(sum(as.integer(secs)) / 3600, 2))
+#   aai_tib <- tibble(genre = cur_style, n_tracks = aai$n_tracks, tot_hrs = aai$tot_hrs)
+#   genre_stats_jazz <- genre_stats_jazz |> bind_rows(aai_tib)
+# }
+# 
+# genre_stats_world <- tibble()
+# 
+# for (cur_style in muw_genre_triplets_world$style) {
+#   
+#   aai <- all_album_info |> 
+#     filter(str_extract(all_album_info$track_id, "[A-Z0-9]+") %in% muw_ids_world$muw_id & 
+#              str_detect(genre, paste0("\\b", cur_style, "\\b"))) |> 
+#     summarise(n_tracks = n(), tot_hrs = round(sum(as.integer(secs)) / 3600, 2))
+#   aai_tib <- tibble(genre = cur_style, n_tracks = aai$n_tracks, tot_hrs = aai$tot_hrs)
+#   genre_stats_world <- genre_stats_world |> bind_rows(aai_tib)
+# }
+# 
+# write_delim(all_album_info, "c:/Users/nipper/Documents/BasieBeats/woj_album_info_2023-12-01.tsv", delim = "\t")
+# write_delim(muw_genre_all, "c:/Users/nipper/Documents/BasieBeats/muw_genre_all_2023-12-01.tsv", delim = "\t")
+# write_delim(muw_genre_by_album, "c:/Users/nipper/Documents/BasieBeats/muw_genre_by_album_2023-12-01.tsv", delim = "\t")
+# write_delim(genre_stats_jazz, "c:/Users/nipper/Documents/BasieBeats/genre_stats_jazz_2023-12-01.tsv", delim = "\t")
+# write_delim(genre_stats_world, "c:/Users/nipper/Documents/BasieBeats/genre_stats_world_2023-12-01.tsv", delim = "\t")
+# 
+# write_rds(all_album_info, "c:/Users/nipper/Documents/BasieBeats/all_album_info.RDS")
+# all_album_info <- read_rds("c:/Users/nipper/Documents/BasieBeats/all_album_info.RDS")
+# 
+# all_album_info_by_genre <- all_album_info |> 
+#   mutate(genre_A = if_else(str_detect(genre, "jazz"), "jazz", "world")) |> 
+#   separate_longer_delim(cols = genre, delim = ",")
+# 
+# unique_genres_raw <- all_album_info_by_genre |> select(genre_A, genre) |> distinct()
+# 
+# unique_genres_clean_jazz <- unique_genres_raw |> 
+#   filter(!genre %in% c("landen", "wereld", "populair", "brazil", "brazilië", "overige talen", 
+#                        "ethiopië", "puerto rico")) |> 
+#   filter(genre_A == "jazz") |> 
+#   mutate(woj_genre = case_when(str_detect(genre, "euro") ~ "europa",
+#                                str_detect(genre, "voca") ~ "vocaal",
+#                                str_detect(genre, "neder") ~ "nederland",
+#                                str_detect(genre, "afr") ~ "afrika",
+#                                str_detect(genre, "lat") ~ "latin jazz",
+#                                T ~ genre))
+# 
+# woj_genres_jazz_mairlist <- unique_genres_clean_jazz |> select(woj_genre) |> distinct()

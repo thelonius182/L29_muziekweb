@@ -5,7 +5,8 @@ muw_track_elm <- function(muw_req, muw_col_name, muw_xpath_var = NULL) {
                              muw_req == "p" ~ "Tracks/Track/Performers/Performer/",
                              muw_req == "r" ~ "ReleaseDate",
                              muw_req == "a" ~ "AlbumTitle[@Language='nl']",
-                             muw_req == "g" ~ "MusicStyles/MainCategory[1]/"
+                             muw_req == "g" ~ "MusicStyles/MainCategory[1]/",
+                             muw_req == "pr" ~ "PICA3/Recording4252"
   )
   
   muw_xpath <- paste0(muw_xpath_base, muw_xpath_pfx, muw_xpath_var)
