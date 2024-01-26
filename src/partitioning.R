@@ -42,21 +42,39 @@ ml_albums_f1 <- ml_albums_e |> select(all_of(n1)) |> select(idx, artist, album, 
 
 ml_albums_f2 <- ml_albums_e |> select(all_of(n1)) |> select(idx, artist, album, everything()) |> 
   mutate_all(~replace(., is.na(.), 0)) |> select(-duration, -title)
-
-ml_stats_s1 <- ml_albums_f2 |> 
-  group_by(`1900\`s`, `1910\`s`, `1920\`s`, `1930\`s`, `1940\`s`, `1950\`s`, `1960\`s`, `1970\`s`, `1980\`s`, `1990\`s`, 
-           `2000\`s`, `2010+`, afrika, any_jazz, any_world, azië, bebop, `big band`, blues, `cool jazz, west coast`, 
-           `easy listening`, electronica, europa, `free jazz, avantgarde`, `funk, soul`, fusion, hiphop, instrumentaal, 
-           jazzrock, `mainstream, swing`, modern, nederland, `neo-bop`, `neo-soul`, `noord-amerika`, `nu jazz`, pop, 
-           reggae, `rhythm and blues`, rock, soundtrack, vocaal, wereldjazz, `zuid-amerika`) |> summarise(n = n())
+# 
+# ml_stats_s1 <- ml_albums_f2 |> 
+#   group_by(`1900\`s`, `1910\`s`, `1920\`s`, `1930\`s`, `1940\`s`, `1950\`s`, `1960\`s`, `1970\`s`, `1980\`s`, `1990\`s`, 
+#            `2000\`s`, `2010+`, afrika, any_jazz, any_world, azië, bebop, `big band`, blues, `cool jazz, west coast`, 
+#            `easy listening`, electronica, europa, `free jazz, avantgarde`, `funk, soul`, fusion, hiphop, instrumentaal, 
+#            jazzrock, `mainstream, swing`, modern, nederland, `neo-bop`, `neo-soul`, `noord-amerika`, `nu jazz`, pop, 
+#            reggae, `rhythm and blues`, rock, soundtrack, vocaal, wereldjazz, `zuid-amerika`) |> summarise(n = n())
 
 # bebop or neo-bop ----
 pl_bebop_neobop <- ml_albums_f2 |> filter(any_world == 0 & (bebop == 1 | `neo-bop` == 1))
-pl_bebop_neobop_artists <- pl_bebop_neobop |> select(artist) |> distinct() |> arrange(artist)
 
-pl_bebop_neobop_tracks <- ml_albums_a |> inner_join(pl_bebop_neobop_artists) |> 
-  select(artist, album, title, duration, track_id = idx) |> arrange(artist, album, title) |> 
-  group_by(artist, album, title) |> mutate(idx = row_number()) |> filter(idx == 1) |> select(-idx)
+# Artist
+pl_bebop_neobop_R <- pl_bebop_neobop |> select(artist) |> distinct() |> 
+  sample() |> mutate(bb_idx_R = row_number()) |> select(bb_idx_R, artist)
+
+# Track
+pl_bebop_neobop_T <- ml_albums_a |> inner_join(pl_bebop_neobop_R) |> 
+  select(bb_idx_R, artist, album, title, duration, track_id = idx) |> arrange(artist, album, title) |> 
+  group_by(artist, album, title) |> mutate(idx = row_number()) |> filter(idx == 1) |> 
+  select(-idx) |> ungroup()
+
+# Artist, Album
+pl_bebop_neobop_RL <- pl_bebop_neobop_T |> select(bb_idx_R, artist, album) |> distinct() |>
+  group_by(artist) |> mutate(bb_idx_L = row_number()) |> ungroup() |> 
+  select(bb_idx_R, artist, bb_idx_L, album)
+
+# Artist, Album, Track
+pl_bebop_neobop_RLT <- pl_bebop_neobop_RL |> inner_join(pl_bebop_neobop_T) |> 
+  group_by(artist, album) |> mutate(bb_idx_T = row_number()) |> 
+  ungroup() |> select(bb_idx_R, bb_idx_L, bb_idx_T, everything())
+
+
+# = = = = = = = = = = = = = = = = = = = = = = = = =
 
 # Example data: a list of objects with weights and other properties
 weights <- sample(x = ml_albums_f$duration, size = 30)
