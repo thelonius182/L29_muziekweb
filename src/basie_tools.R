@@ -3,14 +3,14 @@ muw_track_elm <- function(muw_req, muw_col_name, muw_xpath_var = NULL) {
   muw_xpath_base <- "//Result/Album/"
   muw_xpath_pfx <- case_when(muw_req == "t" ~ "Tracks/Track/",
                              muw_req == "p" ~ "Tracks/Track/Performers/Performer/",
+                             muw_req == "r" ~ "ReleaseDate",
                              muw_req == "a" ~ "AlbumTitle[@Language='nl']",
-                             muw_req == "g" ~ "MusicStyles/MainCategory[1]/"
+                             muw_req == "g" ~ "MusicStyles/MainCategory[1]/",
+                             muw_req == "pr" ~ "PICA3/Recording4252"
   )
-  result <- xml_text(xml_find_all(muw_xml, 
-                                  xpath = paste0(muw_xpath_base,
-                                                 muw_xpath_pfx,
-                                                 muw_xpath_var))
-  ) %>% as_tibble()
+  
+  muw_xpath <- paste0(muw_xpath_base, muw_xpath_pfx, muw_xpath_var)
+  result <- xml_text(xml_find_all(muw_xml, xpath = muw_xpath)) %>% as_tibble()
   names(result) <- muw_col_name
   return(result)
 }
@@ -24,6 +24,30 @@ muw_album_genre <- function(muw_req, muw_col_name, c1, c2, s1) {
   )
   result <- xml_text(xml_find_all(muw_xml, xpath = paste0(muw_xpath_base, muw_xpath_pfx))) %>% as_tibble()
   names(result) <- muw_col_name
+  return(result)
+}
+
+muw_external_link <- function() {
+  
+  spotify_links <- xml_find_all(muw_xml, ".//ExternalLink[@Provider='SPOTIFY']")
+  
+  if (length(spotify_links) == 0) {
+    return(tibble(spotify_id = NA))
+  }
+  
+  spotify_links_tib <- xml_text(spotify_links) %>% as_tibble() %>% mutate(rrn = row_number()) %>% 
+    select(rrn, spotify_id = value)
+  
+  # Extract the TrackNumber for each Spotify link
+  track_numbers <- sapply(spotify_links, function(link) {
+    closest_track <- xml_find_first(link, ".//ancestor::Track")
+    xml_attr(closest_track, "TrackNumber")
+  }) %>% as_tibble() %>% mutate(rrn = row_number(), spotify_key = as.integer(value)) %>% select(-value)
+  
+  suppressMessages(spotify_links_by_key <- spotify_links_tib %>% left_join(track_numbers) %>% select(-rrn))
+  
+  suppressMessages(result <- muw_tracks_id %>% mutate(spotify_key = row_number()) %>% 
+                     left_join(spotify_links_by_key) %>% select(spotify_id))
   return(result)
 }
 
@@ -108,28 +132,45 @@ gd_albums_and_tracks_muw <- function(open_playlists) {
     }
   }
   
-  muziekweb.3 <- muziekweb.2 %>%
-    inner_join(track_items, by = c("rrn" = "track_rrn")) %>%
-    rename(muw_album_id = `muziekweb-id`) %>%
-    select(starts_with("muw"), playlist) %>%
-    mutate(muw_track_id = paste0(
-      muw_album_id,
-      "-",
-      str_pad(
-        string = as.character(muw_track),
-        width = 4,
-        side = "left",
-        pad = "0"
-      )
-    ))
+  suppressMessages(muziekweb.3 <- muziekweb.2 %>%
+                     inner_join(track_items, by = c("rrn" = "track_rrn")) %>%
+                     rename(muw_album_id = `muziekweb-id`) %>%
+                     select(starts_with("muw"), playlist) %>%
+                     mutate(muw_track_id = paste0(muw_album_id,
+                                                  "-",
+                                                  str_pad(string = as.character(muw_track),
+                                                          width = 4,
+                                                          side = "left",
+                                                          pad = "0"))))
   
   return(muziekweb.3)
 }
 
+# get_mal_conn <- function() {
+# 
+#   result <- tryCatch( 
+#     dbConnect(odbc::odbc(), "mAirlistDB", timeout = 10),
+#     error = function(cond) {
+#       flog.error("mAirList database unavailable", name = "bsblog")
+#       return("connection-error")
+#     }
+#   )
+#   
+#   return(result)
+# }
+# 
 get_mal_conn <- function() {
+  
+  # just to prevent uploading credentials to github
+  basie_creds <- read_rds("C:/Users/nipper/Documents/BasieBeats/basie.creds")
 
   result <- tryCatch( 
-    dbConnect(odbc::odbc(), "mAirlistDB", timeout = 10),
+    dbConnect(RPostgres::Postgres(),
+              dbname = 'mairlist7', 
+              host = '192.168.178.91', 
+              port = 5432,
+              user = basie_creds$usr,
+              password = basie_creds$pwd),
     error = function(cond) {
       flog.error("mAirList database unavailable", name = "bsblog")
       return("connection-error")
