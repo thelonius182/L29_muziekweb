@@ -37,41 +37,65 @@ ml_albums_e <- ml_albums_d |> mutate(attr_value = 1) |>
 
 n1 <- names(ml_albums_e) |> sort()
 
-ml_albums_f1 <- ml_albums_e |> select(all_of(n1)) |> select(idx, artist, album, everything()) |> 
-  mutate_all(~replace(., is.na(.), 0))
-
 ml_albums_f2 <- ml_albums_e |> select(all_of(n1)) |> select(idx, artist, album, everything()) |> 
   mutate_all(~replace(., is.na(.), 0)) |> select(-duration, -title)
-# 
-# ml_stats_s1 <- ml_albums_f2 |> 
-#   group_by(`1900\`s`, `1910\`s`, `1920\`s`, `1930\`s`, `1940\`s`, `1950\`s`, `1960\`s`, `1970\`s`, `1980\`s`, `1990\`s`, 
-#            `2000\`s`, `2010+`, afrika, any_jazz, any_world, azië, bebop, `big band`, blues, `cool jazz, west coast`, 
-#            `easy listening`, electronica, europa, `free jazz, avantgarde`, `funk, soul`, fusion, hiphop, instrumentaal, 
-#            jazzrock, `mainstream, swing`, modern, nederland, `neo-bop`, `neo-soul`, `noord-amerika`, `nu jazz`, pop, 
-#            reggae, `rhythm and blues`, rock, soundtrack, vocaal, wereldjazz, `zuid-amerika`) |> summarise(n = n())
 
 # bebop or neo-bop ----
 pl_bebop_neobop <- ml_albums_f2 |> filter(any_world == 0 & (bebop == 1 | `neo-bop` == 1))
 
 # Artist
-pl_bebop_neobop_R <- pl_bebop_neobop |> select(artist) |> distinct() |> 
-  sample() |> mutate(bb_idx_R = row_number()) |> select(bb_idx_R, artist)
+pl_bebop_neobop_R.1 <- pl_bebop_neobop |> select(artist) |> distinct()
+pl_bebop_neobop_R.2 <- pl_bebop_neobop_R.1 |> mutate(rdm = runif(nrow(pl_bebop_neobop_R.1)))
+pl_bebop_neobop_R.3 <- pl_bebop_neobop_R.2 |> arrange(rdm) |> mutate(bb_idx_R = row_number()) |> 
+  select(bb_idx_R, artist)
 
 # Track
-pl_bebop_neobop_T <- ml_albums_a |> inner_join(pl_bebop_neobop_R) |> 
+pl_bebop_neobop_T <- ml_albums_a |> inner_join(pl_bebop_neobop_R.3) |> 
   select(bb_idx_R, artist, album, title, duration, track_id = idx) |> arrange(artist, album, title) |> 
   group_by(artist, album, title) |> mutate(idx = row_number()) |> filter(idx == 1) |> 
-  select(-idx) |> ungroup()
+  select(-idx) |> ungroup() |> arrange(bb_idx_R)
 
 # Artist, Album
-pl_bebop_neobop_RL <- pl_bebop_neobop_T |> select(bb_idx_R, artist, album) |> distinct() |>
+pl_bebop_neobop_RL.1 <- pl_bebop_neobop_T |> select(bb_idx_R, artist, album) |> distinct()
+
+pl_bebop_neobop_RL.2 <- pl_bebop_neobop_RL.1 |> 
   group_by(artist) |> mutate(bb_idx_L = row_number()) |> ungroup() |> 
-  select(bb_idx_R, artist, bb_idx_L, album)
+  mutate(rdm = runif(nrow(pl_bebop_neobop_RL.1))) |> arrange(bb_idx_R, rdm) |> 
+  group_by(bb_idx_R) |> mutate(bb_idx_L2 = row_number()) |> ungroup() |> 
+  mutate(bb_idx_L = bb_idx_L2) |> 
+  select(-bb_idx_L2, -rdm) |> 
+  select(bb_idx_R, bb_idx_L, everything()) |> arrange(bb_idx_R, bb_idx_L)
 
 # Artist, Album, Track
-pl_bebop_neobop_RLT <- pl_bebop_neobop_RL |> inner_join(pl_bebop_neobop_T) |> 
-  group_by(artist, album) |> mutate(bb_idx_T = row_number()) |> 
-  ungroup() |> select(bb_idx_R, bb_idx_L, bb_idx_T, everything())
+pl_bebop_neobop_RLT <- pl_bebop_neobop_RL.2 |> inner_join(pl_bebop_neobop_T) |> 
+  select(bb_idx_R, bb_idx_L, track_id, everything()) |> arrange(bb_idx_R, bb_idx_L, track_id) |> 
+  group_by(bb_idx_R, bb_idx_L) |> mutate(n_tracks = n()) |> ungroup() |> 
+  select(bb_idx_R, bb_idx_L, n_tracks, track_id, everything())
+
+# Artist, n_tracks
+ant <- pl_bebop_neobop_RLT |> select(bb_idx_R, track_id) |> 
+  group_by(bb_idx_R) |> summarise(n_tracks = n()) |> ungroup() |> arrange(desc(n_tracks))
+
+tracks_max <- pl_bebop_neobop_RLT |> select(bb_idx_R, track_id) |> 
+  group_by(bb_idx_R) |> summarise(n_tracks = n()) |> filter(n_tracks == max(n_tracks))
+
+R1 <- pl_bebop_neobop_RLT |> filter(bb_idx_R == tracks_max$bb_idx_R)
+R2 <- pl_bebop_neobop_RLT |> filter(bb_idx_R == 4)
+
+# Calculate the number of times B needs to be repeated
+n_repeats <- ceiling(nrow(R1) / nrow(R2))
+
+# Repeat the rows of B using rep
+R2_repeated <- tibble()
+
+for (i1 in 1:n_repeats) {
+  R2_repeated <- R2_repeated |> bind_rows(R2)
+}
+
+R2_repeated <- head(R2_repeated, n = tracks_max$n_tracks)
+
+# Use bind_cols to combine A and the repeated B
+result <- bind_cols(R1, R2_repeated)
 
 
 # = = = = = = = = = = = = = = = = = = = = = = = = =

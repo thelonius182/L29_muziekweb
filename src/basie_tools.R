@@ -179,3 +179,31 @@ get_mal_conn <- function() {
   
   return(result)
 }
+
+clean_artists <- function(arg_artists) {
+  # Clean artist-info: only keep the first name
+  result <- arg_artists |> 
+    separate_longer_delim(performers, delim = ",") |> 
+    separate_longer_delim(performers, delim = ";") |> 
+    separate_longer_delim(performers, delim = "_") |> 
+    separate_longer_delim(performers, delim = ",") |> 
+    separate_longer_delim(performers, delim = "&") |> 
+    separate_longer_delim(performers, delim = "+") |> 
+    separate_longer_delim(performers, delim = "/") |> 
+    separate_longer_delim(performers, delim = " and ") |> 
+    separate_longer_delim(performers, delim = " AND ") |> 
+    separate_longer_delim(performers, delim = " And ") |> 
+    separate_longer_delim(performers, delim = "-") |> 
+    separate_longer_delim(performers, delim = " w ") |> 
+    separate_longer_delim(performers, delim = " W ") |> 
+    separate_longer_delim(performers, delim = " With ") |> 
+    separate_longer_delim(performers, delim = " with ") |> 
+    separate_longer_delim(performers, delim = " WITH ") |> 
+    separate_longer_delim(performers, delim = " Feat. ") |> 
+    separate_longer_delim(performers, delim = " feat. ") |> 
+    separate_longer_delim(performers, delim = " featuring ") |> 
+    filter(!is.na(performers) & str_length(str_trim(performers, "both")) > 0) |> 
+    mutate(performers = str_trim(performers, "both")) |> group_by(muw_album_id) |> 
+    mutate(rrn = row_number()) |> ungroup() |> 
+    filter(rrn == 1) |> select(muw_album_id, artist = performers) |> distinct()
+}
