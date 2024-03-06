@@ -24,7 +24,7 @@ all_album_info <- tibble(muw_catalogue_type = character(),
                          instruments = character())
 muw_genre_all <- tibble()
 
-for (cur_album_id in muw_ids$muw_id) {
+for (cur_album_id in new_mal_album_ids$muw_id) {
   
   cat("album-id =", cur_album_id, "\n")
   
