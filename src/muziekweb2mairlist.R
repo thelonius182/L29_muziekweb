@@ -7,7 +7,7 @@ source("src/basie_tools.R", encoding = "UTF-8")
 basie_config <- read_yaml("basie_config.yaml")
 log_path <- paste(basie_config$log_home, "basie_beats.log", sep = "/")
 lg_ini <- flog.appender(appender.file(log_path), "bsblog")
-flog.info("= = = = = START muziekweb-2-mairlist (version 2024-03-06 23:13) = = = = =", name = "bsblog")
+flog.info("= = = = = START muziekweb-2-mairlist (version 2024-03-08 20:29) = = = = =", name = "bsblog")
 
 # connect to mAirList-DB ----
 maldb <- get_mal_conn()
@@ -32,7 +32,7 @@ if (nrow(new_mal_album_ids) == 0) {
   flog.info("No new Muziekweb-albums found in mAirList-db.", name = "bsblog")
   dbDisconnect(maldb)
   flog.info("mAirList-DB is disconnected", name = "bsblog")
-  flog.info("= = = = = STOP muziekwweb-2-mairlist = = = = =", name = "bsblog")
+  flog.info("= = = = = STOP muziekweb-2-mairlist = = = = =", name = "bsblog")
   stop("no new albums (not an error).")
 }
 
@@ -131,7 +131,7 @@ set externalid = u1.track_id,
 from basiebeats_upd_jazz_items u1
 where items.idx = u1.idx;"
 n_updates <- dbExecute(maldb, sql_stmt)
-flog.info(paste0("Updated ", n_updates, " table = items, Jazz"), name = "bsblog")
+flog.info(paste0("Items           (jazz)    updated : ", n_updates), name = "bsblog")
 
 upd_jazz_genre_A <- ext_muw_track_info_jazz |> select(item = idx) |> distinct() |> 
   mutate(name = "any_jazz", value = "yes") |> select(item, name, value)
@@ -152,7 +152,7 @@ dbWriteTable(maldb, "basiebeats_upd_jazz_all_attrs", upd_jazz_all_attrs)
 sql_stmt <- "insert into item_attributes
 select * from basiebeats_upd_jazz_all_attrs;"
 n_inserts <- dbExecute(maldb, sql_stmt)
-flog.info(paste0("Inserted ", n_inserts, " table - item_attributes, Jazz"), name = "bsblog")
+flog.info(paste0("Item-attributes (jazz)    inserted: ", n_inserts), name = "bsblog")
 
 # UPD WORLD TRACKS ----
 upd_world_items <- ext_muw_track_info_world |> select(idx, track_id, titel, artist) |> distinct()
@@ -167,7 +167,7 @@ set externalid = u1.track_id,
 from basiebeats_upd_world_items u1
 where items.idx = u1.idx;"
 n_updates <- dbExecute(maldb, sql_stmt)
-flog.info(paste0("Updated ", n_updates, " table = items, World"), name = "bsblog")
+flog.info(paste0("Items           (world)   updated : ", n_updates), name = "bsblog")
 
 upd_world_genre_A <- ext_muw_track_info_world |> select(item = idx) |> distinct() |> 
   mutate(name = "any_world", value = "yes") |> select(item, name, value)
@@ -188,7 +188,7 @@ dbWriteTable(maldb, "basiebeats_upd_world_all_attrs", upd_world_all_attrs)
 sql_stmt <- "insert into item_attributes
 select * from basiebeats_upd_world_all_attrs;"
 n_inserts <- dbExecute(maldb, sql_stmt)
-flog.info(paste0("Inserted ", n_inserts, " table = item_attributes, World"), name = "bsblog")
+flog.info(paste0("Item-attributes (world)   inserted: ", n_inserts), name = "bsblog")
 
 # UPDATE_DECADES ----
 upd_decades <- bind_rows(ext_muw_track_info_jazz, ext_muw_track_info_world) |> 
@@ -215,8 +215,8 @@ dbWriteTable(maldb, "basiebeats_ymd_attrs", upd_decades)
 
 sql_stmt <- "insert into item_attributes select * from basiebeats_ymd_attrs"
 n_inserts <- dbExecute(maldb, sql_stmt)
-flog.info(paste0("Inserted ", n_inserts, " table = item_attributes, Decades"), name = "bsblog")
+flog.info(paste0("Item-attributes (decades) inserted: ", n_inserts), name = "bsblog")
 
 dbDisconnect(maldb)
 flog.info("mAirList-DB is disconnected", name = "bsblog")
-flog.info("= = = = = STOP muziekwweb-2-mairlist = = = = =", name = "bsblog")
+flog.info("= = = = = STOP muziekweb-2-mairlist = = = = =", name = "bsblog")
