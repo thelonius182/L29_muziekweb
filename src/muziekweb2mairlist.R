@@ -7,7 +7,7 @@ source("src/basie_tools.R", encoding = "UTF-8")
 basie_config <- read_yaml("basie_config.yaml")
 log_path <- paste(basie_config$log_home, "basie_beats.log", sep = "/")
 lg_ini <- flog.appender(appender.file(log_path), "bsblog")
-flog.info("= = = = = START muziekweb-2-mairlist (version 2024-03-08 20:29) = = = = =", name = "bsblog")
+flog.info("= = = = = START muziekweb-2-mairlist (version 2024-03-21 23:45) = = = = =", name = "bsblog")
 
 # connect to mAirList-DB ----
 maldb <- get_mal_conn()
